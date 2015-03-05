@@ -1,0 +1,370 @@
+title: "Bike Sharing System"
+author: "Yang(Alex) Hu"
+highlighter: prettify
+knit: slidify::knit2slides
+mode: selfcontained
+hitheme: zenburn
+bootstrap:
+  theme: ameliz
+framework: revealjs
+widgets: [mathjax]
+url: {lib: "."}
+---
+ 
+## Bike Sharing System Analysis
+### Forecast Bike Sharing Demand
+<p align="right"> - Created by Yang(Alex) Hu</p>
+
+--- &vertical 
+
+## Background
+
+What is a bike sharing system ?
+![alt text](http://www.bicycling.com/sites/bicycling.com/files/styles/slideshow-desktop/public/slides/boston_0_0.jpg)
+
+***
+### Background
+
+<p align="left">Bike sharing system is a service in which bicycles are made available for shared use to individuals on a very short term basis.</p>
+
+![alt text](http://36.media.tumblr.com/5ea9dd8818141a56363f74686b1bbf26/tumblr_mnkdtqRJ5u1re3zauo1_1280.png)
+
+***
+## Why study it?
+
+<p align="left">Bike sharing systems function as a sensor network, which can be used for studying mobility in a city.</p> 
+
+--- &vertical
+
+## Probelm Description
+Bike sharing systems suffer from:
+- Bikeshare imbalance
+- Adverse effects of harsh weather conditions
+
+***
+
+### Bikeshare Imbalance
+<p align="left">Because of commuting patterns, bikes tend to pile up downtown in morning and on the outskirts in the afternoon.</p>
+
+***
+### Harsh Weather Effects
+<p align="left">Different weather conditions affects the number of bikes being rented. </p>
+
+***
+
+### Goal
+
+<p align="left">In this project, we are going to combine historical usage patterns with weather data in order to forecast bike rental demand in the Capital Bikeshare program in Washington, D.C. </p>
+
+
+--- &vertical 
+## Data
+
+<p align="left">In this analysis, we have a training data set which includes hourly rental data for the first 19 days of the months in 2011 and 2012. The <span style="color:#00FFFF; font-weight:bold">goal</span> is to predict the rest of the days for the month.</p>
+
+***
+## Variables in the Data Set 
+
+1. **datetime** : hourly date + timestamp 
+2. **season** : 1 = spring, 2 = summer, 3 = fall, 4 = winter
+3. **holiday** : whether the day is considered a holiday
+4. **workingday** : whether the day is neither a weekend nor holiday
+5. **weather** : [Four levels](http://www.kaggle.com/c/bike-sharing-demand/data)
+6. **temp** - temperature in Celsius
+
+***
+## Variables in the Data Set
+
+7.  **atemp** : "feels like" temperature in Celsius
+8.  **humidity** : relative humidity
+9.  **windspeed** : wind speed
+10. **casual** : number of non-registered user rentals initiated
+11. **registered** : number of registered user rentals initiated
+12. **count** : number of total rentals
+
+--- &vertical
+## Data Exploration
+
+Before moving ahead, we need to understand the data first.
+
+*** 
+### First Look
+
+```{r, echo=FALSE, basicconsole, fig.width=12, background='white'}
+#data<-read.csv('C:/Users/train.csv')
+source('C:/Users/Kaggle Competition/bike sharing system/data.R')
+print(head(bike_train))
+```
+
+
+***
+### Categorical Variables
+
+```{r, echo=FALSE, fig.width=8,fig.align='center'}
+#visualize the relationship between hour, day, year and count
+#source('C:/Users/Kaggle Competition/bike sharing system/data.R')
+library(gridExtra)
+library(ggplot2)
+p1 <- ggplot(bike_train, aes(x=season, y=count, fill=season)) + geom_boxplot()
+p2 <- ggplot(bike_train, aes(x=holiday, y=count, fill=holiday)) + geom_boxplot()
+p3 <- ggplot(bike_train, aes(x=workingday, y=count, fill=workingday)) + geom_boxplot()
+p4 <- ggplot(bike_train, aes(x=weather, y=count, fill=weather)) + geom_boxplot()
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+```
+
+***
+### Numerical Variables
+
+```{r, echo=FALSE, fig.width=8, fig.align='center'}
+# Draw scatter plot to visualize the numerical variables
+p5 <- ggplot(bike_train, aes(x=temp, y=count)) + geom_point()
+p6 <- ggplot(bike_train, aes(x=atemp, y=count)) + geom_point()
+p7 <- ggplot(bike_train, aes(x=humidity, y=count)) + geom_point()
+p8 <- ggplot(bike_train, aes(x=windspeed, y=count)) + geom_point()
+grid.arrange(p5, p6, p7, p8, ncol=2)
+```
+
+***
+### Correlation
+
+```{r, echo=FALSE, fig.align="center"}
+
+library(corrplot)
+cor.data <- bike_train[,-1]
+cor.data <- cor.data[sapply(cor.data, function(x) !is.factor(x))]
+corrplot(cor(cor.data))
+
+```
+
+***
+### Datetime as Factor Variables
+
+```{r, echo=FALSE, fig.width=12, fig.height=6, fig.align="center"}
+p9 <- ggplot(data=bike_train, aes(x=year, y=count, colour=year)) +
+  geom_boxplot()
+
+p10 <- ggplot(data=bike_train, aes(x=month, y=count, colour=month)) +
+  geom_boxplot()
+
+p11 <- ggplot(data=bike_train, aes(x=day, y=count, colour=day)) + 
+  geom_boxplot() + 
+  scale_x_discrete(labels=c("Sun","Mon","Tue","Wed","Thu","Fri","Sat"))
+
+p12 <- ggplot(data=bike_train, aes(x=hour, y=count, colour=hour)) + 
+  geom_bar(stat="identity") + 
+  theme(legend.position="none")
+
+grid.arrange(p9, p10, p11, p12, ncol=2)
+
+```
+
+***
+### Impact of Weekdays and Hours on Counts
+
+```{r, echo=FALSE,fig.width=12, fig.align="center"}
+day_hour_counts <- as.data.frame(aggregate(bike_train[,"count"], list(bike_train$day, bike_train$hour), mean))
+day_hour_counts$hour <- as.numeric(as.character(day_hour_counts$Group.2))
+day_hour_counts$Group.1 <- factor(day_hour_counts$Group.1,
+                              labels=c("Sun","Mon", "Tue", "Wed",
+                                       "Thu", "Fri", "Sat"))
+# plot heat mat with ggplot
+ggplot(day_hour_counts, aes(x = Group.1, y = hour)) + 
+  geom_tile(aes(fill = x)) + 
+  scale_fill_gradient(name="Average Counts", low="white", high="purple") + 
+  theme(axis.title.y = element_blank())
+
+```
+
+***
+### Season-wise best optimum weather condition 
+
+```{r, echo=FALSE, fig.width=12, fig.align="center"}
+season_weather_counts <-as.data.frame(aggregate(bike_train[,"count"], list(bike_train$season, bike_train$weather), mean))
+season_weather_counts$weather <- as.numeric(as.character(season_weather_counts$Group.2))
+season_weather_counts$season <- as.numeric(as.character(season_weather_counts$Group.1))
+season_weather_counts$weatherN <-factor(season_weather_counts$weather)
+season_weather_counts$weatherN <- factor(season_weather_counts$weather,
+                                         labels=c("Clear + Few clouds +
+                                                  \n Partly cloudy ",
+                                                  "Mist + Cloudy,Mist +\n Broken clouds, 
+                                                  Mist + Few clouds, Mist","Light Snow, 
+                                                  Light Rain +\n Thunderstorm + Scattered clouds,
+                                                  \n Light Rain + Scattered clouds"))
+season_weather_counts$seasonN <-factor(season_weather_counts$season)
+season_weather_counts$seasonN <- factor(season_weather_counts$season,
+                                        labels=c("spring","summer","fall","winter"))
+ggplot(season_weather_counts, aes( x = seasonN,y = weatherN)) + 
+  geom_tile(aes(fill = x)) + 
+  scale_fill_gradient(name="Season-weather wise average Counts", low="white", high="green") + 
+  theme(axis.title.y = element_blank())
+```
+
+
+***
+### Distribution of the Count
+
+```{r, echo=FALSE, fig.width=10, fig.height=8, fig.align="center"}
+ggplot(data=bike_train, aes(x=count, y=..density..)) + 
+  geom_histogram(binwidth=10, fill="cornsilk", colour="gray60") +
+  geom_density(fill="lightblue", colour=NA, alpha=0.2) +
+  geom_line(stat="density")
+
+```
+
+
+***
+### Summarize the Data set
+
+1. Holiday, windspeed and humidity seems not highly relate to the count
+2. Temp, feels-like temp, weather, year and hour seems highly relate to the count
+3. Maximum bikes are rented during 7-9 am and 5-7 pm from Monday to Friday.
+4. Highest number of bikes are rented during summer and fall when there are few clouds and some mist in the air.
+5. Count Number of rented bikes seems follow a Poisson distribution.
+
+--- &vertical
+## Method
+### Gradient Boosting Regression
+
+<p align="left">Gradient boosting is a machine learning technique for regression problems, which produces a prediction model in the form of an ensemble of weak prediction models.</p>
+
+*** 
+### Algorithm
+![alt text](C:/Users/presentation/gbm ag.png)
+
+***
+### Advantages
+
+- Heterogeneous data (features measured on different scale)
+- Predictive Power
+- Robust to outliers in output space (via Robust loss function)
+
+***
+### Disadvantages
+- Requires carefully tunning
+- Slow to training (but fast to predict)
+
+***
+### Model Evaluation
+<p align="left">Root Mean Squared Error:</p>
+
+$$RMSE = \sqrt{\frac{\sum{(p_i-a_i)^{2}}}{n}}$$
+$$a_i = actual target$$
+$$p_i = predicted target$$
+
+<p align="left">Root Mean Squared Log Error:</p>
+
+$$RMSLE = \sqrt{\frac{1}{n}\sum{(log(p_i+1)-log(a_i+1))^{2}}}$$
+$$a_i = actual target$$
+$$p_i = predicted target$$
+
+
+--- &vertical
+## Implement Gradient Boosting Regression using R
+<p align="left">The gbm package implements extensions to J.Friedman's gradient boosting machine. Includes LOSS functions for us like least squares, absolute loss, Gaussian, Poisson and more.</p>
+
+*** 
+### Usage
+```
+gbm(bike_train$count~.,
+             data=bike_train[,-c(1,10,11)],
+             distribution="poisson",
+             n.trees=3000,
+             shrinkage=0.01,
+             interaction.depth=5,
+             bag.fraction=0.5,
+             train.fraction=1,
+             n.minobsinnode=5,
+             cv.folds=5,
+             )
+
+```
+<small align="left">It returns a [gbm object](http://cran.r-project.org/web/packages/gbm/gbm.pdf), and you can use summary, predict to this object.</small>
+
+--- &vertical
+## Results
+1. A full model with all variables has been produced.
+2. A relative influence plot has been generated.
+2. Removed some low relative influence variables and produced a simplified model.
+
+***
+### Full Model
+Relative Influence Plot
+![alt text](C:/Users/presentation/RIFULL.png)
+
+***
+### Simplified Model
+Relative Influence Plot
+![alt text](C:/Users/presentation/simpRI.png)
+
+***
+### Simplified Model
+![alt text](C:/Users/presentation/simpID.png)
+
+***
+### Simplified Model
+```{r, echo=FALSE}
+plot_data <- read.csv("C:/Users/Kaggle Competition/bike sharing system/plotdata1.csv") 
+ggplot(data=plot_data, aes(x=pred.valid, y=bike_valid.count)) + 
+  geom_point() + 
+  stat_bin2d(bins=500) +
+  scale_fill_gradient(low="lightblue", high="red", limits=c(0, 50)) + 
+  geom_abline(intercept=0, slope=1, colour="yellow")
+
+```
+
+
+***
+### Simplified Model
+
+```{r, echo=FALSE}
+plot_line_data <- read.csv("C:/Users/Kaggle Competition/bike sharing system/R prediction2.csv") 
+ggplot(data=plot_line_data, aes(x=variable,y=value,colour=variable)) + 
+  geom_boxplot() +
+  stat_summary(fun.y=mean, geom="point", shape=23, size=3, fill="white")
+```
+
+***
+### Simplified Model
+[More Results:](http://127.0.0.1:7284/)
+![alt text](C:/Users/presentation/app.png)
+
+--- &vertical
+## Model Evaluation
+### RMSE Comparision
+```{r, echo=FALSE, fig.width=10}
+method <- c("GBM_poisson", "GBM_gaussian", "LinearRegression", "PoissonRegression" )
+RMSE <- c(30.01, 54.32, 163.83, 83.4)
+data <- data.frame(method, RMSE)
+rmse <- ggplot(data=data, aes(x=method, y=RMSE, fill=method)) + geom_bar(stat="identity") +
+         geom_text(aes(label=RMSE, vjust=-0.2))
+
+print(rmse)
+
+```
+
+
+***
+### RMSLE Comparision
+```{r, echo=FALSE, fig.width=10}
+method <- c("GBM_poisson", "GBM_gaussian", "LinearRegression", "PoissonRegression", "Kaggle Average" )
+RMSLE <- c(0.42, 0.57, 1.73, 0.70, 1.58)
+data <- data.frame(method, RMSLE)
+rmsle <- ggplot(data=data, aes(x=method, y=RMSLE, fill=method)) + geom_bar(stat="identity") +
+          geom_text(aes(label=RMSLE, vjust=-0.2))
+print(rmsle)
+```
+
+---
+## Conclusions
+1. Gradient Boosting Regression provides a very accurate prediction.
+2. Hour, month and working days influence the count number most.
+3. Weather doesn't affect the system usage as we thought especially in fall.
+
+---
+## Future Research
+1. Focus on how to improve the algorithm's speed.
+2. Try to build a better shiny app which could allow other people to use in their study 
+
+---
+# Thank you!
